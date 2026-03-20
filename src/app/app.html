@@ -1,0 +1,166 @@
+<main class="shell">
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Freedom furniture reference app</p>
+      <h1>Structured commerce surfaces for a furniture storefront.</h1>
+      <p class="lede">
+        This demo focuses on storefront-side responsibilities: stable conversation identity,
+        streamed assistant text, and renderable A2UI surfaces for shopping flows.
+      </p>
+    </div>
+
+    <div class="hero-meta">
+      <div class="meta-card">
+        <span>Mode</span>
+        <strong>{{ modeLabel() }}</strong>
+      </div>
+      <div class="meta-card">
+        <span>Thread</span>
+        <strong>{{ threadId().slice(0, 8) }}</strong>
+      </div>
+      <div class="meta-card">
+        <span>Status</span>
+        <strong>{{ status() }}</strong>
+      </div>
+      <div class="meta-card">
+        <span>Messages</span>
+        <strong>{{ historyCount() }}</strong>
+      </div>
+      <label class="meta-card mode-toggle-card">
+        <span>Use live path</span>
+        <div class="toggle-row">
+          <strong>{{ agentMode() === 'live' ? 'Live' : 'Mock' }}</strong>
+          <input
+            class="toggle-input"
+            type="checkbox"
+            [checked]="agentMode() === 'live'"
+            [disabled]="busy()"
+            (change)="toggleAgentMode($any($event.target).checked)"
+          />
+        </div>
+      </label>
+    </div>
+  </section>
+
+  <section class="workspace">
+    <article class="panel transcript-panel">
+      <header class="panel-header">
+        <div>
+          <p class="panel-kicker">Conversation</p>
+          <h2>Conversation with inline surfaces</h2>
+        </div>
+        <button class="ghost-button" type="button" (click)="resetConversation()">
+          Reset
+        </button>
+      </header>
+
+      <div class="transcript">
+        <div class="empty-state" *ngIf="messages().length === 0">
+          <p>No messages yet.</p>
+          <span>Try “show me sofas”, “compare sofas”, or “build a living room bundle”.</span>
+        </div>
+
+        <article
+          class="bubble"
+          *ngFor="let message of messages()"
+          [class.user-bubble]="message.role === 'user'"
+          [class.assistant-bubble]="message.role === 'assistant'"
+        >
+          <p class="bubble-role">{{ message.role === 'user' ? 'You' : 'Assistant' }}</p>
+          <p class="bubble-text">{{ message.text }}</p>
+        </article>
+
+        <details class="progress-block" *ngIf="toolActivity().length > 0 || reasoningText()">
+          <summary>
+            <span>Progress</span>
+            <small>
+              {{
+                toolActivity().length > 0
+                  ? toolActivity()[toolActivity().length - 1].status === 'running'
+                    ? 'Working'
+                    : 'Completed'
+                  : 'Thinking'
+              }}
+            </small>
+          </summary>
+
+          <div class="progress-content">
+            <p class="progress-reasoning" *ngIf="reasoningText()">{{ reasoningText() }}</p>
+
+            <ul class="progress-list" *ngIf="toolActivity().length > 0">
+              <li *ngFor="let tool of toolActivity()">
+                <span>{{ tool.name.replaceAll('_', ' ') }}</span>
+                <small>{{ tool.status === 'running' ? 'Running' : 'Done' }}</small>
+              </li>
+            </ul>
+          </div>
+        </details>
+
+        <article class="inline-surfaces" *ngIf="surfaces().length > 0">
+          <div class="inline-surfaces-head">
+            <p class="bubble-role">Assistant</p>
+            <span>Structured results</span>
+          </div>
+
+          <div class="surface-stack">
+            <ng-container *ngFor="let surface of surfaces()">
+              <app-product-carousel
+                *ngIf="surface.componentType === 'ProductCarousel'"
+                [title]="$any(surface).heading"
+                [items]="$any(surface).products"
+                [isLoading]="$any(surface).isLoading"
+              />
+
+              <app-comparison-table
+                *ngIf="surface.componentType === 'ComparisonTable'"
+                [title]="$any(surface).heading"
+                [attributes]="$any(surface).attributes"
+                [products]="$any(surface).products"
+                [isLoading]="$any(surface).isLoading"
+              />
+
+              <app-comparison-summary
+                *ngIf="surface.componentType === 'ComparisonSummary'"
+                [text]="$any(surface).text"
+              />
+
+              <app-bundle-display
+                *ngIf="surface.componentType === 'BundleDisplay'"
+                [title]="$any(surface).title"
+                [bundles]="$any(surface).bundles"
+                [isLoading]="$any(surface).isLoading"
+              />
+
+              <app-next-actions-bar
+                *ngIf="surface.componentType === 'NextActionsBar'"
+                [actions]="$any(surface).actions"
+                [isLoading]="$any(surface).isLoading"
+                (selectAction)="useQuickAction($event)"
+              />
+            </ng-container>
+          </div>
+        </article>
+      </div>
+
+      <form class="composer" (ngSubmit)="submitPrompt()">
+        <label class="composer-label" for="prompt">Ask the storefront assistant</label>
+        <textarea
+          id="prompt"
+          name="prompt"
+          rows="3"
+          [ngModel]="draft()"
+          (ngModelChange)="draft.set($event)"
+          [disabled]="busy()"
+          placeholder="Show me sofas"
+        ></textarea>
+
+        <div class="composer-actions">
+          <span class="status-pill" [class.active]="busy()">{{ status() }}</span>
+          <button class="primary-button" type="submit" [disabled]="busy() || !draft().trim()">
+            {{ busy() ? 'Streaming…' : 'Send' }}
+          </button>
+        </div>
+      </form>
+    </article>
+  </section>
+</main>
