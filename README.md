@@ -217,46 +217,54 @@ For most storefront implementations, a good default is:
 
 ## Angular Architecture
 
-Use four layers:
+Use five layers:
 
-1. A container component that owns transcript state, structured surfaces, and submit flow for the conversation route.
-2. A transport service that yields normalized AG-UI events.
-3. An A2UI parser that merges `surfaceUpdate` and `dataModelUpdate` operations into renderable surface state.
-4. Presentational Angular components for each commerce surface.
+1. A thin shell component that hydrates persisted demo state and composes the conversation page.
+2. A signal-based facade service that owns transcript state, structured surfaces, submit flow, and AG-UI event reduction.
+3. A transport service that yields normalized AG-UI events as RxJS Observables.
+4. An A2UI parser that merges `surfaceUpdate` and `dataModelUpdate` operations into renderable surface state.
+5. Standalone Angular components for the shell sections and commerce surfaces.
 
 ## Code Map
 
 ### [src/app/app.ts](src/app/app.ts)
 
-The main container component.
+The thin root shell component.
 
 It is responsible for:
 
-- transcript state
 - persisted conversation state in `localStorage`
-- active `threadId`
-- runtime mode switching
-- consuming normalized AG-UI events
-- tracking tool-call and reasoning progress state
-- applying A2UI activity snapshots into renderable surface state
+- hydrating the facade from `localStorage` on startup
+- persisting the facade snapshot back to `localStorage`
+- composing the conversation page sections
 
-Modify this file when changing conversation orchestration, persistence behavior, or top-level UX flow.
+Modify this file when changing top-level page composition or persistence wiring.
 
 ### [src/app/app.html](src/app/app.html)
 
-The main Angular template for the conversation feature.
+The root Angular template for the conversation feature.
 
 It is responsible for:
 
 - rendering the conversation shell
-- rendering transcript bubbles
-- rendering the collapsible progress disclosure
-- rendering structured A2UI surfaces inline
-- wiring the composer and next-action interactions
+- wiring the facade view model into the shell components
+- defining where transcript, composer, and inline surfaces appear in the page structure
 
-Modify this file when changing transcript layout, surface placement, or conversation-route UX structure.
+Modify this file when changing top-level shell layout or conversation-route UX structure.
 
 ### [src/app/app.css](src/app/app.css)
+
+Component-scoped root styles and responsive overrides.
+
+It is responsible for:
+
+- host display
+- responsive layout adjustments for the shell
+- mobile overrides for transcript and composer controls
+
+Modify this file when adjusting root-level responsive behavior.
+
+### [src/styles.css](src/styles.css)
 
 The main styling for the conversation feature.
 
@@ -271,29 +279,44 @@ It is responsible for:
 
 Modify this file when adapting the conversation route to a brand or storefront design system.
 
+### [src/app/services/demo-conversation.facade.ts](src/app/services/demo-conversation.facade.ts)
+
+The signal-based conversation facade used by the Angular shell.
+
+It is responsible for:
+
+- draft, transcript, status, and runtime mode state
+- submit flow orchestration
+- consuming normalized AG-UI events
+- tracking tool-call and reasoning progress state
+- applying A2UI activity snapshots into renderable surface state
+- exposing the shell view model and persistence snapshot
+
+Modify this file when changing conversation orchestration, state flow, or persisted demo behavior.
+
 ### [src/app/services/agent-demo.service.ts](src/app/services/agent-demo.service.ts)
 
-The top-level transport service used by the Angular app.
+The top-level transport service used by the facade.
 
 It is responsible for:
 
 - exposing a single `streamTurn()` API
-- deciding whether the run uses mock or live mode
-- producing the local mock event stream
+- choosing between mock and live mode from the caller-provided mode
+- producing the local mock Observable event stream
 - supporting the fallback custom `fetch` + SSE live path
 - normalizing raw SSE payloads into the app’s AG-UI event model
 
-Modify this file when changing mode selection, request payload shape, or fallback live transport behavior.
+Modify this file when changing transport selection, request payload shape, or fallback live transport behavior.
 
 ### [src/app/services/ag-ui-client-transport.service.ts](src/app/services/ag-ui-client-transport.service.ts)
 
-The alternative live transport implementation based on `@ag-ui/client`.
+The optional live transport implementation based on `@ag-ui/client`.
 
 It is responsible for:
 
 - creating an `HttpAgent`
 - sending a run request using the AG-UI client SDK
-- converting the returned event stream into the app’s async generator pattern
+- exposing the returned event stream as `Observable<AgUiEvent>`
 - normalizing SDK events into the local `AgUiEvent` union
 
 Modify this file when adopting AG-UI client features such as middleware, headers, or richer live event handling.
@@ -327,6 +350,19 @@ It is responsible for:
 
 Modify this file when extending the supported protocol or adding new surface types.
 
+### [src/app/conversation.interfaces.ts](src/app/conversation.interfaces.ts)
+
+The shared facade and persistence state types.
+
+It is responsible for:
+
+- the shell view model shape
+- persisted conversation payloads
+- tool activity state
+- the surface-state alias used by the facade
+
+Modify this file when changing facade-owned state or the persisted demo contract.
+
 ### [src/app/mock-catalog.ts](src/app/mock-catalog.ts)
 
 The local mock scenarios used by the demo.
@@ -355,7 +391,12 @@ Modify this file when switching defaults or pointing the app at a local or produ
 
 ### [src/app/components/](src/app/components/)
 
-The presentational Angular components for the supported commerce surfaces:
+The standalone Angular components for the conversation shell and supported commerce surfaces:
+
+- `conversation-header.component.ts`
+- `transcript-panel.component.ts`
+- `prompt-composer.component.ts`
+- `surface-outlet.component.ts`
 
 - `product-carousel.component.ts`
 - `comparison-table.component.ts`
@@ -363,23 +404,23 @@ The presentational Angular components for the supported commerce surfaces:
 - `bundle-display.component.ts`
 - `next-actions-bar.component.ts`
 
-These components are intentionally thin. They take already-normalized surface data and render it.
+Most of these components are intentionally thin. The shell components render facade state, the leaf surface components render already-normalized surface data, and `surface-outlet.component.ts` maps a surface `componentType` to the matching renderer.
 
 ## UX References
 
 Screenshots added under `docs/screenshots/` can be used as optional UX inspiration. They help show the intent behind the A2UI components and how structured surfaces can appear inline within a conversational storefront route.
 
-They are visual references, not strict implementation requirements. The Angular implementation in [src/app/app.html](src/app/app.html) and [src/app/app.css](src/app/app.css) remains the actual code reference in this repo.
+They are visual references, not strict implementation requirements. The Angular implementation in [src/app/app.html](src/app/app.html), [src/styles.css](src/styles.css), and [src/app/app.css](src/app/app.css) remains the actual code reference in this repo.
 
 ## Alternative AG-UI Client Option
 
-Instead of hand-rolling transport and SSE parsing, the storefront could use `@ag-ui/client` for the AG-UI connection layer and keep the Angular A2UI rendering layer custom.
+This repo includes `@ag-ui/client` as an optional live transport alongside the hand-rolled `fetch` + SSE path.
 
-That implementation choice would look like:
+That live path:
 
 1. Use `HttpAgent` from `@ag-ui/client` in an Angular service.
 2. Subscribe to AG-UI events from the client library instead of parsing raw SSE frames manually.
-3. Keep the same Angular container state and A2UI parser patterns used in this repo.
+3. Normalize SDK events into the same facade and A2UI parser flow used elsewhere in the app.
 4. Continue rendering commerce surfaces with Angular components.
 
 Example service shape:
