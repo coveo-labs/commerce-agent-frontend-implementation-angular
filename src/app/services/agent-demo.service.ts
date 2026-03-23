@@ -1,10 +1,10 @@
 // Main transport entry point for the Angular app.
-// The container component only talks to this service. It decides whether to
-// emit a local mock run or use one of the live transport implementations.
+// The Angular-facing contract is an Observable stream of AG-UI events.
 import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
 import { demoAgentConfig, DemoAgentMode, DemoLiveTransport } from '../demo-agent.config';
+import { getMockScenario, MockScenario, MockToolCall } from '../mock-catalog';
 import { AgUiEvent, StreamTurnInput } from '../models';
-import { getMockScenario } from '../mock-catalog';
 import { AgUiClientTransportService } from './ag-ui-client-transport.service';
 
 type RawSseEvent = {
@@ -12,220 +12,465 @@ type RawSseEvent = {
   data: string;
 };
 
+type EventSubscriber = {
+  next(value: AgUiEvent): void;
+  complete(): void;
+  error(error: unknown): void;
+  closed: boolean;
+};
+
+type EventSink = {
+  emit(event: AgUiEvent, delayMs?: number): Promise<boolean>;
+  complete(): void;
+  error(error: unknown): void;
+  isClosed(): boolean;
+};
+
+type MockRunContext = {
+  input: StreamTurnInput;
+  scenario: MockScenario;
+  runId: string;
+  messageId: string;
+  reasoningMessageId: string;
+};
+
 @Injectable({ providedIn: 'root' })
 export class AgentDemoService {
   private readonly agUiClientTransport = inject(AgUiClientTransportService);
-  private mode: DemoAgentMode = demoAgentConfig.mode;
-  private liveTransport: DemoLiveTransport = demoAgentConfig.liveTransport;
-
-  getMode(): DemoAgentMode {
-    return this.mode;
-  }
+  private readonly liveTransport: DemoLiveTransport = demoAgentConfig.liveTransport;
 
   getLiveTransport(): DemoLiveTransport {
     return this.liveTransport;
   }
 
-  setMode(mode: DemoAgentMode): void {
-    this.mode = mode;
+  streamTurn(input: StreamTurnInput, mode: DemoAgentMode): Observable<AgUiEvent> {
+    if (mode === 'live') {
+      return this.streamLiveTurn(input);
+    }
+
+    return this.streamMockTurn(input);
   }
 
-  async *streamTurn(input: StreamTurnInput): AsyncGenerator<AgUiEvent> {
-    if (this.mode === 'live') {
-      if (this.liveTransport === 'ag-ui-client') {
-        yield* this.agUiClientTransport.streamTurn(input);
+  private streamLiveTurn(input: StreamTurnInput): Observable<AgUiEvent> {
+    if (this.liveTransport === 'ag-ui-client') {
+      return this.agUiClientTransport.streamTurn(input);
+    }
+
+    return this.streamDeferredLiveTurn(input);
+  }
+
+  private streamMockTurn(input: StreamTurnInput): Observable<AgUiEvent> {
+    return new Observable<AgUiEvent>((subscriber) => {
+      let cancelled = false;
+      const sink = this.createEventSink(subscriber, () => cancelled);
+      const context = this.createMockRunContext(input);
+
+      void this.runMockTurn(context, sink);
+
+      return () => {
+        cancelled = true;
+      };
+    });
+  }
+
+  private async runMockTurn(context: MockRunContext, sink: EventSink): Promise<void> {
+    try {
+      if (!(await this.emitMockPrelude(context, sink))) {
         return;
       }
 
-      yield* this.streamDeferredLiveTurn(input);
-      return;
-    }
+      if (!(await this.emitReasoningSequence(context, sink))) {
+        return;
+      }
 
-    yield* this.streamMockTurn(input);
+      if (!(await this.emitToolCallSequence(context.scenario.toolCalls, sink))) {
+        return;
+      }
+
+      if (!(await this.emitIntermediateSnapshots(context.scenario.activitySnapshots, sink))) {
+        return;
+      }
+
+      if (!(await this.emitAssistantResponse(context, sink))) {
+        return;
+      }
+
+      if (!(await this.emitFinalSnapshot(context.scenario.activitySnapshots.at(-1), sink))) {
+        return;
+      }
+
+      if (!(await this.emitRunFinished(context, sink))) {
+        return;
+      }
+
+      if (!sink.isClosed()) {
+        sink.complete();
+      }
+    } catch (error) {
+      sink.error(error);
+    }
   }
 
-  private async *streamMockTurn(input: StreamTurnInput): AsyncGenerator<AgUiEvent> {
-    // The mock path emits a small but protocol-shaped AG-UI/A2UI sequence so
-    // the storefront can be built and reviewed before the live endpoint exists.
-    const scenario = getMockScenario(input.prompt);
-    const runId = crypto.randomUUID();
+  private createMockRunContext(input: StreamTurnInput): MockRunContext {
     const messageId = crypto.randomUUID();
-    const reasoningMessageId = `reasoning-${messageId}`;
 
-    yield {
-      type: 'RUN_STARTED',
-      threadId: input.threadId,
-      runId
+    return {
+      input,
+      scenario: getMockScenario(input.prompt),
+      runId: crypto.randomUUID(),
+      messageId,
+      reasoningMessageId: `reasoning-${messageId}`,
     };
+  }
 
-    yield {
-      type: 'STATE_SNAPSHOT',
-      snapshot: {
-        label: 'Understanding request'
-      }
+  private createEventSink(
+    subscriber: EventSubscriber,
+    isCancelled: () => boolean,
+  ): EventSink {
+    return {
+      emit: async (event: AgUiEvent, delayMs = 0) => {
+        if (isCancelled() || subscriber.closed) {
+          return false;
+        }
+
+        subscriber.next(event);
+
+        if (delayMs > 0) {
+          await this.delay(delayMs);
+        }
+
+        return !isCancelled() && !subscriber.closed;
+      },
+      complete: () => {
+        if (!subscriber.closed) {
+          subscriber.complete();
+        }
+      },
+      error: (error: unknown) => {
+        if (!subscriber.closed) {
+          subscriber.error(error);
+        }
+      },
+      isClosed: () => isCancelled() || subscriber.closed,
     };
+  }
 
-    await this.delay(180);
-
-    yield {
-      type: 'REASONING_START',
-      messageId: reasoningMessageId
-    };
-
-    yield {
-      type: 'REASONING_MESSAGE_START',
-      messageId: reasoningMessageId,
-      role: 'assistant'
-    };
-
-    for (const chunk of splitReasoningText(scenario.reasoningText)) {
-      yield {
-        type: 'REASONING_MESSAGE_CONTENT',
-        messageId: reasoningMessageId,
-        delta: chunk
-      };
-      await this.delay(35);
+  private async emitMockPrelude(context: MockRunContext, sink: EventSink): Promise<boolean> {
+    if (
+      !(await sink.emit({
+        type: 'RUN_STARTED',
+        threadId: context.input.threadId,
+        runId: context.runId,
+      }))
+    ) {
+      return false;
     }
 
-    yield {
-      type: 'REASONING_MESSAGE_END',
-      messageId: reasoningMessageId
-    };
+    return sink.emit(
+      {
+        type: 'STATE_SNAPSHOT',
+        snapshot: {
+          label: 'Understanding request',
+        },
+      },
+      180,
+    );
+  }
 
-    yield {
+  private async emitReasoningSequence(
+    context: MockRunContext,
+    sink: EventSink,
+  ): Promise<boolean> {
+    if (
+      !(await sink.emit({
+        type: 'REASONING_START',
+        messageId: context.reasoningMessageId,
+      }))
+    ) {
+      return false;
+    }
+
+    if (
+      !(await sink.emit({
+        type: 'REASONING_MESSAGE_START',
+        messageId: context.reasoningMessageId,
+        role: 'assistant',
+      }))
+    ) {
+      return false;
+    }
+
+    for (const chunk of splitReasoningText(context.scenario.reasoningText)) {
+      if (
+        !(await sink.emit(
+          {
+            type: 'REASONING_MESSAGE_CONTENT',
+            messageId: context.reasoningMessageId,
+            delta: chunk,
+          },
+          35,
+        ))
+      ) {
+        return false;
+      }
+    }
+
+    if (
+      !(await sink.emit({
+        type: 'REASONING_MESSAGE_END',
+        messageId: context.reasoningMessageId,
+      }))
+    ) {
+      return false;
+    }
+
+    return sink.emit({
       type: 'REASONING_END',
-      messageId: reasoningMessageId
-    };
+      messageId: context.reasoningMessageId,
+    });
+  }
 
-    for (const toolCall of scenario.toolCalls) {
-      const toolCallId = crypto.randomUUID();
-      yield {
-        type: 'TOOL_CALL_START',
-        toolCallId,
-        toolName: toolCall.name,
-        toolCallName: toolCall.name
-      };
-      await this.delay(90);
+  private async emitToolCallSequence(
+    toolCalls: MockToolCall[],
+    sink: EventSink,
+  ): Promise<boolean> {
+    for (const toolCall of toolCalls) {
+      if (!(await this.emitToolCall(toolCall, sink))) {
+        return false;
+      }
+    }
 
-      if (toolCall.args) {
-        yield {
+    return true;
+  }
+
+  private async emitToolCall(toolCall: MockToolCall, sink: EventSink): Promise<boolean> {
+    const toolCallId = crypto.randomUUID();
+
+    if (
+      !(await sink.emit(
+        {
+          type: 'TOOL_CALL_START',
+          toolCallId,
+          toolName: toolCall.name,
+          toolCallName: toolCall.name,
+        },
+        90,
+      ))
+    ) {
+      return false;
+    }
+
+    if (
+      toolCall.args &&
+      !(await sink.emit(
+        {
           type: 'TOOL_CALL_ARGS',
           toolCallId,
           delta: toolCall.args,
-          argsDelta: toolCall.args
-        };
-        await this.delay(70);
-      }
+          argsDelta: toolCall.args,
+        },
+        70,
+      ))
+    ) {
+      return false;
+    }
 
-      if (toolCall.result) {
-        yield {
+    if (
+      toolCall.result &&
+      !(await sink.emit(
+        {
           type: 'TOOL_CALL_RESULT',
           toolCallId,
-          content: toolCall.result
-        };
-        await this.delay(70);
-      }
+          content: toolCall.result,
+        },
+        70,
+      ))
+    ) {
+      return false;
+    }
 
-      yield {
+    return sink.emit(
+      {
         type: 'TOOL_CALL_END',
-        toolCallId
-      };
-      await this.delay(70);
+        toolCallId,
+      },
+      70,
+    );
+  }
+
+  private async emitIntermediateSnapshots(
+    snapshots: MockScenario['activitySnapshots'],
+    sink: EventSink,
+  ): Promise<boolean> {
+    for (const snapshot of snapshots.slice(0, -1)) {
+      if (!(await sink.emit(this.toActivitySnapshotEvent(snapshot), 150))) {
+        return false;
+      }
     }
 
-    for (const snapshot of scenario.activitySnapshots.slice(0, -1)) {
-      yield {
-        type: 'ACTIVITY_SNAPSHOT',
-        messageId: snapshot.messageId,
-        activityType: snapshot.activityType,
-        content: {
-          operations: snapshot.operations
-        },
-        replace: true
-      };
-      await this.delay(150);
+    return true;
+  }
+
+  private async emitAssistantResponse(
+    context: MockRunContext,
+    sink: EventSink,
+  ): Promise<boolean> {
+    if (
+      !(await sink.emit({
+        type: 'TEXT_MESSAGE_START',
+        messageId: context.messageId,
+        role: 'assistant',
+      }))
+    ) {
+      return false;
     }
 
-    yield {
-      type: 'TEXT_MESSAGE_START',
-      messageId,
-      role: 'assistant'
-    };
-
-    for (const chunk of scenario.textChunks) {
-      yield {
-        type: 'TEXT_MESSAGE_CONTENT',
-        messageId,
-        delta: chunk
-      };
-      await this.delay(55);
+    for (const chunk of context.scenario.textChunks) {
+      if (
+        !(await sink.emit(
+          {
+            type: 'TEXT_MESSAGE_CONTENT',
+            messageId: context.messageId,
+            delta: chunk,
+          },
+          55,
+        ))
+      ) {
+        return false;
+      }
     }
 
-    yield {
-      type: 'TEXT_MESSAGE_END',
-      messageId
-    };
+    if (
+      !(await sink.emit({
+        type: 'TEXT_MESSAGE_END',
+        messageId: context.messageId,
+      }))
+    ) {
+      return false;
+    }
 
-    yield {
+    return sink.emit({
       type: 'STATE_SNAPSHOT',
-      snapshot: scenario.stateSnapshot
-    };
+      snapshot: context.scenario.stateSnapshot,
+    });
+  }
 
-    const finalSnapshot = scenario.activitySnapshots.at(-1);
-
-    if (finalSnapshot) {
-      yield {
-        type: 'ACTIVITY_SNAPSHOT',
-        messageId: finalSnapshot.messageId,
-        activityType: finalSnapshot.activityType,
-        content: {
-          operations: finalSnapshot.operations
-        },
-        replace: true
-      };
+  private emitFinalSnapshot(
+    snapshot: MockScenario['activitySnapshots'][number] | undefined,
+    sink: EventSink,
+  ): Promise<boolean> {
+    if (!snapshot) {
+      return Promise.resolve(true);
     }
 
-    yield {
+    return sink.emit(this.toActivitySnapshotEvent(snapshot));
+  }
+
+  private emitRunFinished(context: MockRunContext, sink: EventSink): Promise<boolean> {
+    return sink.emit({
       type: 'RUN_FINISHED',
-      threadId: input.threadId,
-      runId
+      threadId: context.input.threadId,
+      runId: context.runId,
+    });
+  }
+
+  private toActivitySnapshotEvent(
+    snapshot: MockScenario['activitySnapshots'][number],
+  ): AgUiEvent {
+    return {
+      type: 'ACTIVITY_SNAPSHOT',
+      messageId: snapshot.messageId,
+      activityType: snapshot.activityType,
+      content: {
+        operations: snapshot.operations,
+      },
+      replace: true,
     };
   }
 
-  private async *streamDeferredLiveTurn(input: StreamTurnInput): AsyncGenerator<AgUiEvent> {
-    // This fallback path keeps the repo usable even if the implementer chooses
-    // not to adopt @ag-ui/client for the live transport layer.
-    const runId = crypto.randomUUID();
+  private streamDeferredLiveTurn(input: StreamTurnInput): Observable<AgUiEvent> {
+    return new Observable<AgUiEvent>((subscriber) => {
+      const controller = new AbortController();
+
+      void this.runDeferredLiveTurn(input, subscriber, controller);
+
+      return () => {
+        controller.abort();
+      };
+    });
+  }
+
+  private async runDeferredLiveTurn(
+    input: StreamTurnInput,
+    subscriber: EventSubscriber,
+    controller: AbortController,
+  ): Promise<void> {
+    try {
+      const stream = await this.requestLiveTurn(input, controller.signal);
+      await this.forwardLiveEvents(stream, subscriber);
+
+      if (!subscriber.closed) {
+        subscriber.complete();
+      }
+    } catch (error) {
+      if (controller.signal.aborted || subscriber.closed) {
+        return;
+      }
+
+      subscriber.error(error);
+    }
+  }
+
+  private async requestLiveTurn(
+    input: StreamTurnInput,
+    signal: AbortSignal,
+  ): Promise<ReadableStream<Uint8Array>> {
     const response = await fetch(demoAgentConfig.liveEndpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        threadId: input.threadId,
-        runId,
-        state: {},
-        tools: [],
-        context: [],
-        forwardedProps: {},
-        messages: [
-          {
-            id: crypto.randomUUID(),
-            role: 'user',
-            content: input.prompt
-          }
-        ]
-      })
+      signal,
+      body: JSON.stringify(this.buildLiveRequestBody(input)),
     });
 
     if (!response.ok || !response.body) {
       throw new Error(`Agent request failed with status ${response.status}.`);
     }
 
-    for await (const rawEvent of this.readSse(response.body)) {
+    return response.body;
+  }
+
+  private buildLiveRequestBody(input: StreamTurnInput): Record<string, unknown> {
+    return {
+      threadId: input.threadId,
+      runId: crypto.randomUUID(),
+      state: {},
+      tools: [],
+      context: [],
+      forwardedProps: {},
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: input.prompt,
+        },
+      ],
+    };
+  }
+
+  private async forwardLiveEvents(
+    stream: ReadableStream<Uint8Array>,
+    subscriber: EventSubscriber,
+  ): Promise<void> {
+    for await (const rawEvent of this.readSse(stream)) {
+      if (subscriber.closed) {
+        return;
+      }
+
       const normalized = this.normalizeSsePayload(rawEvent);
       if (normalized) {
-        yield normalized;
+        subscriber.next(normalized);
       }
     }
   }
@@ -278,7 +523,10 @@ export class AgentDemoService {
 
       if (line.startsWith('event:')) {
         eventName = line.slice(6).trim();
-      } else if (line.startsWith('data:')) {
+        continue;
+      }
+
+      if (line.startsWith('data:')) {
         const value = line.slice(5);
         dataLines.push(value.startsWith(' ') ? value.slice(1) : value);
       }
@@ -290,7 +538,7 @@ export class AgentDemoService {
 
     return {
       event: eventName,
-      data: dataLines.join('\n')
+      data: dataLines.join('\n'),
     };
   }
 
@@ -319,10 +567,8 @@ export class AgentDemoService {
 
   private unwrapPayload(
     payload: Record<string, unknown>,
-    fallbackType?: string
+    fallbackType?: string,
   ): Record<string, unknown> | null {
-    // Different backends may wrap the event differently. This keeps the demo
-    // tolerant to the common payload envelopes seen in SSE integrations.
     if (payload['type'] && typeof payload['type'] === 'string') {
       return payload;
     }

@@ -1,16 +1,8 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  EventEmitter,
-  Input,
-  Output
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { NextAction } from '../models';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { NextActionsBarSurface } from '../models';
 
 @Component({
   selector: 'app-next-actions-bar',
-  imports: [CommonModule],
   template: `
     <section class="surface">
       <header class="surface-header">
@@ -18,17 +10,21 @@ import { NextAction } from '../models';
         <h3>Suggested next steps</h3>
       </header>
 
-      <div class="actions" *ngIf="!isLoading; else loading">
-        <button type="button" *ngFor="let action of actions" (click)="selectAction.emit(action.text)">
-          {{ action.text }}
-        </button>
-      </div>
-
-      <ng-template #loading>
-        <div class="loading-row">
-          <span *ngFor="let item of placeholders"></span>
+      @if (!surface().isLoading) {
+        <div class="actions">
+          @for (action of surface().actions; track action.text + ':' + action.type) {
+            <button type="button" (click)="handleAction(action.text)">
+              {{ action.text }}
+            </button>
+          }
         </div>
-      </ng-template>
+      } @else {
+        <div class="loading-row">
+          @for (item of placeholders; track $index) {
+            <span></span>
+          }
+        </div>
+      }
     </section>
   `,
   styles: [
@@ -89,14 +85,16 @@ import { NextAction } from '../models';
           background-position: -200% 0;
         }
       }
-    `
+    `,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NextActionsBarComponent {
   protected readonly placeholders = Array.from({ length: 3 });
+  readonly surface = input.required<NextActionsBarSurface>();
+  readonly onSelectAction = input<(action: string) => void>(() => {});
 
-  @Input({ required: true }) actions: NextAction[] = [];
-  @Input() isLoading = false;
-  @Output() selectAction = new EventEmitter<string>();
+  protected handleAction(action: string): void {
+    this.onSelectAction()(action);
+  }
 }

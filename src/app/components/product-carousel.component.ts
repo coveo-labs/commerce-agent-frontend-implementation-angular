@@ -1,41 +1,49 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { formatAudPrice } from '../formatting';
-import { ProductRecord } from '../models';
+import { ProductCarouselSurface } from '../models';
 
 @Component({
   selector: 'app-product-carousel',
-  imports: [CommonModule],
   template: `
     <section class="surface">
       <header class="surface-header">
         <p class="surface-kicker">Product Carousel</p>
-        <h3>{{ title }}</h3>
+        <h3>{{ surface().heading }}</h3>
       </header>
 
-      <div class="loading-grid" *ngIf="isLoading">
-        <div class="loading-card" *ngFor="let item of placeholders"></div>
-      </div>
-
-      <div class="grid" *ngIf="!isLoading">
-        <article class="card" *ngFor="let item of items">
-          <div
-            class="swatch"
-            [style.background]="item.accent || 'linear-gradient(135deg, #e7d8c8, #c6a889)'"
-          ></div>
-          <p class="brand">{{ item.ec_brand }}</p>
-          <h4>{{ item.ec_name }}</h4>
-          <p class="description">{{ item.description || 'Freedom furniture option' }}</p>
-          <div class="meta">
-            <span *ngIf="item['material']">{{ item['material'] }}</span>
-            <span *ngIf="item['style']">{{ item['style'] }}</span>
-          </div>
-          <div class="footer">
-            <strong>{{ formatPrice(item.ec_promo_price ?? item.ec_price) }}</strong>
-            <span>{{ item.ec_promo_price ? 'Sale price' : 'View details' }}</span>
-          </div>
-        </article>
-      </div>
+      @if (surface().isLoading) {
+        <div class="loading-grid">
+          @for (item of placeholders; track $index) {
+            <div class="loading-card"></div>
+          }
+        </div>
+      } @else {
+        <div class="grid">
+          @for (item of surface().products; track item.ec_product_id) {
+            <article class="card">
+              <div
+                class="swatch"
+                [style.background]="item.accent || 'linear-gradient(135deg, #e7d8c8, #c6a889)'"
+              ></div>
+              <p class="brand">{{ item.ec_brand }}</p>
+              <h4>{{ item.ec_name }}</h4>
+              <p class="description">{{ item.description || 'Freedom furniture option' }}</p>
+              <div class="meta">
+                @if (item['material']) {
+                  <span>{{ item['material'] }}</span>
+                }
+                @if (item['style']) {
+                  <span>{{ item['style'] }}</span>
+                }
+              </div>
+              <div class="footer">
+                <strong>{{ formatPrice(item.ec_promo_price ?? item.ec_price) }}</strong>
+                <span>{{ item.ec_promo_price ? 'Sale price' : 'View details' }}</span>
+              </div>
+            </article>
+          }
+        </div>
+      }
     </section>
   `,
   styles: [
@@ -120,16 +128,13 @@ import { ProductRecord } from '../models';
           background-position: -200% 0;
         }
       }
-    `
+    `,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProductCarouselComponent {
   protected readonly placeholders = Array.from({ length: 3 });
-
-  @Input({ required: true }) title = '';
-  @Input({ required: true }) items: ProductRecord[] = [];
-  @Input() isLoading = false;
+  readonly surface = input.required<ProductCarouselSurface>();
 
   protected formatPrice(value: number): string {
     return formatAudPrice(value);
