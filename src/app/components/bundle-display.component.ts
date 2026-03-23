@@ -1,38 +1,44 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { BundleDisplayTier } from '../models';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { BundleDisplaySurface } from '../models';
 
 @Component({
   selector: 'app-bundle-display',
-  imports: [CommonModule],
   template: `
     <section class="surface">
       <header class="surface-header">
         <p class="surface-kicker">Bundle Display</p>
-        <h3>{{ title }}</h3>
+        <h3>{{ surface().title }}</h3>
       </header>
 
-      <div class="loading-grid" *ngIf="isLoading; else bundlesView">
-        <div class="loading-card" *ngFor="let item of placeholders"></div>
-      </div>
-
-      <ng-template #bundlesView>
-        <article class="bundle-card" *ngFor="let bundle of bundles">
-          <div class="bundle-head">
-            <h4>{{ bundle.label }}</h4>
-            <p>{{ bundle.description }}</p>
-          </div>
-
-          <div class="slot-grid">
-            <div class="slot" *ngFor="let slot of bundle.slots">
-              <span class="slot-label">{{ slot.categoryLabel }}</span>
-              <strong>{{ slot.product?.ec_name || 'Pending selection' }}</strong>
-              <small>{{ slot.product?.ec_brand || 'Freedom' }}</small>
-              <p *ngIf="slot.product?.description">{{ slot.product?.description }}</p>
+      @if (surface().isLoading) {
+        <div class="loading-grid">
+          @for (item of placeholders; track $index) {
+            <div class="loading-card"></div>
+          }
+        </div>
+      } @else {
+        @for (bundle of surface().bundles; track bundle.bundleId) {
+          <article class="bundle-card">
+            <div class="bundle-head">
+              <h4>{{ bundle.label }}</h4>
+              <p>{{ bundle.description }}</p>
             </div>
-          </div>
-        </article>
-      </ng-template>
+
+            <div class="slot-grid">
+              @for (slot of bundle.slots; track slot.surfaceRef + ':' + slot.categoryLabel) {
+                <div class="slot">
+                  <span class="slot-label">{{ slot.categoryLabel }}</span>
+                  <strong>{{ slot.product?.ec_name || 'Pending selection' }}</strong>
+                  <small>{{ slot.product?.ec_brand || 'Freedom' }}</small>
+                  @if (slot.product?.description) {
+                    <p>{{ slot.product?.description }}</p>
+                  }
+                </div>
+              }
+            </div>
+          </article>
+        }
+      }
     </section>
   `,
   styles: [
@@ -125,14 +131,11 @@ import { BundleDisplayTier } from '../models';
           background-position: -200% 0;
         }
       }
-    `
+    `,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BundleDisplayComponent {
   protected readonly placeholders = Array.from({ length: 1 });
-
-  @Input({ required: true }) title = '';
-  @Input({ required: true }) bundles: BundleDisplayTier[] = [];
-  @Input() isLoading = false;
+  readonly surface = input.required<BundleDisplaySurface>();
 }

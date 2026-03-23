@@ -1,16 +1,15 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ComparisonSummarySurface } from '../models';
 
 @Component({
   selector: 'app-comparison-summary',
-  imports: [CommonModule],
   template: `
     <section class="surface summary">
       <div class="summary-lead">
         <p class="surface-kicker">Comparison Summary</p>
         <span>Assistant recommendation</span>
       </div>
-      <p class="summary-text">{{ text }}</p>
+      <p class="summary-text">{{ surface().text }}</p>
     </section>
   `,
   styles: [
@@ -48,10 +47,10 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
         color: #204f46;
         font-size: 1rem;
       }
-    `
+    `,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ComparisonSummaryComponent {
-  @Input({ required: true }) text = '';
+  readonly surface = input.required<ComparisonSummarySurface>();
 }

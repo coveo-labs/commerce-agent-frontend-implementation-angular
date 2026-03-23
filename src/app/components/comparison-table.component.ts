@@ -1,26 +1,26 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { formatAudPrice } from '../formatting';
-import { ProductRecord } from '../models';
+import { ComparisonTableSurface } from '../models';
 
 @Component({
   selector: 'app-comparison-table',
-  imports: [CommonModule],
   template: `
     <section class="surface">
       <header class="surface-header">
         <p class="surface-kicker">Comparison Table</p>
-        <h3>{{ title }}</h3>
+        <h3>{{ surface().heading }}</h3>
       </header>
 
-      <div class="loading-table" *ngIf="isLoading; else table"></div>
-
-      <ng-template #table>
+      @if (surface().isLoading) {
+        <div class="loading-table"></div>
+      } @else {
         <div class="product-strip">
-          <article class="product-pill" *ngFor="let product of products">
-            <span>{{ product.ec_brand }}</span>
-            <strong>{{ product.ec_name }}</strong>
-          </article>
+          @for (product of surface().products; track product.ec_product_id) {
+            <article class="product-pill">
+              <span>{{ product.ec_brand }}</span>
+              <strong>{{ product.ec_name }}</strong>
+            </article>
+          }
         </div>
 
         <div class="table-wrap">
@@ -28,23 +28,29 @@ import { ProductRecord } from '../models';
             <thead>
               <tr>
                 <th>Product</th>
-                <th *ngFor="let attribute of attributes">{{ formatLabel(attribute) }}</th>
+                @for (attribute of surface().attributes; track attribute) {
+                  <th>{{ formatLabel(attribute) }}</th>
+                }
                 <th>Price</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let product of products">
-                <td>
-                  <strong>{{ product.ec_name }}</strong>
-                  <span>{{ product.ec_brand }}</span>
-                </td>
-                <td *ngFor="let attribute of attributes">{{ product[attribute] || '—' }}</td>
-                <td>{{ formatPrice(product.ec_promo_price ?? product.ec_price) }}</td>
-              </tr>
+              @for (product of surface().products; track product.ec_product_id) {
+                <tr>
+                  <td>
+                    <strong>{{ product.ec_name }}</strong>
+                    <span>{{ product.ec_brand }}</span>
+                  </td>
+                  @for (attribute of surface().attributes; track attribute) {
+                    <td>{{ product[attribute] || '—' }}</td>
+                  }
+                  <td>{{ formatPrice(product.ec_promo_price ?? product.ec_price) }}</td>
+                </tr>
+              }
             </tbody>
           </table>
         </div>
-      </ng-template>
+      }
     </section>
   `,
   styles: [
@@ -130,15 +136,12 @@ import { ProductRecord } from '../models';
           background-position: -200% 0;
         }
       }
-    `
+    `,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ComparisonTableComponent {
-  @Input({ required: true }) title = '';
-  @Input({ required: true }) attributes: string[] = [];
-  @Input({ required: true }) products: ProductRecord[] = [];
-  @Input() isLoading = false;
+  readonly surface = input.required<ComparisonTableSurface>();
 
   protected formatLabel(value: string): string {
     return value.replace(/_/g, ' ');
