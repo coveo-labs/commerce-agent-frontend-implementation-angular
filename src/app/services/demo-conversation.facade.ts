@@ -24,6 +24,7 @@ export class DemoConversationFacade {
   readonly status = signal('Ready');
   readonly agentMode = signal<DemoAgentMode>(demoAgentConfig.mode);
   readonly latestSnapshot = signal<Record<string, unknown> | null>(null);
+  readonly conversationToken = signal<string | null>(null);
   readonly reasoningText = signal('');
   readonly toolActivity = signal<ToolActivity[]>([]);
   readonly threadId = signal(this.createId());
@@ -52,6 +53,7 @@ export class DemoConversationFacade {
   readonly persistenceSnapshot = computed<PersistedConversation>(() => ({
     agentMode: this.agentMode(),
     threadId: this.threadId(),
+    conversationToken: this.conversationToken(),
     messages: this.messages(),
     surfaces: this.surfaces(),
     latestSnapshot: this.latestSnapshot(),
@@ -66,6 +68,7 @@ export class DemoConversationFacade {
 
     this.agentMode.set(conversation.agentMode);
     this.threadId.set(conversation.threadId);
+    this.conversationToken.set(conversation.conversationToken);
     this.messages.set(conversation.messages);
     this.surfaceState.set(this.createRestoredSurfaceState(conversation.surfaces));
     this.latestSnapshot.set(conversation.latestSnapshot);
@@ -92,6 +95,8 @@ export class DemoConversationFacade {
       .streamTurn(
         {
           threadId: this.threadId(),
+          conversationSessionId: this.threadId(),
+          conversationToken: this.conversationToken() ?? undefined,
           prompt: message,
         },
         this.agentMode(),
@@ -118,6 +123,7 @@ export class DemoConversationFacade {
 
   resetConversation(): void {
     this.threadId.set(this.createId());
+    this.conversationToken.set(null);
     this.messages.set([]);
     this.surfaceState.set(createEmptySurfaceState());
     this.latestSnapshot.set(null);
@@ -169,13 +175,17 @@ export class DemoConversationFacade {
   private handleEvent(event: AgUiEvent): boolean {
     switch (event.type) {
       case 'RUN_STARTED':
-        if (event.threadId) {
-          this.threadId.set(event.threadId);
-        }
+        this.syncConversationContext(event);
         this.status.set('Run started');
         return false;
       case 'RUN_FINISHED':
+        this.syncConversationContext(event);
         this.status.set('Ready');
+        this.busy.set(false);
+        return true;
+      case 'RUN_ERROR':
+        this.syncConversationContext(event);
+        this.handleSubmitError(event.message);
         this.busy.set(false);
         return true;
       case 'TEXT_MESSAGE_START':
@@ -356,6 +366,21 @@ export class DemoConversationFacade {
   private describeTool(toolName: string): string {
     const normalized = toolName.replace(/_/g, ' ');
     return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+
+  private syncConversationContext(event: {
+    threadId?: string;
+    conversationSessionId?: string;
+    conversationToken?: string;
+  }): void {
+    const conversationSessionId = event.conversationSessionId ?? event.threadId;
+    if (conversationSessionId) {
+      this.threadId.set(conversationSessionId);
+    }
+
+    if (event.conversationToken) {
+      this.conversationToken.set(event.conversationToken);
+    }
   }
 
   private createId(): string {

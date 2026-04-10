@@ -42,6 +42,8 @@ export type BundleTierConfig = {
 export type StreamTurnInput = {
   threadId: string;
   prompt: string;
+  conversationSessionId?: string;
+  conversationToken?: string;
 };
 
 export type ValueMapEntry = {
@@ -168,12 +170,24 @@ export type RunStartedEvent = {
   type: 'RUN_STARTED';
   threadId?: string;
   runId?: string;
+  conversationSessionId?: string;
+  conversationToken?: string;
 };
 
 export type RunFinishedEvent = {
   type: 'RUN_FINISHED';
   threadId?: string;
   runId?: string;
+  conversationSessionId?: string;
+  conversationToken?: string;
+};
+
+export type RunErrorEvent = {
+  type: 'RUN_ERROR';
+  message: string;
+  code?: string;
+  conversationSessionId?: string;
+  conversationToken?: string;
 };
 
 export type TextMessageStartEvent = {
@@ -265,6 +279,7 @@ export type ReasoningEndEvent = {
 export type AgUiEvent =
   | RunStartedEvent
   | RunFinishedEvent
+  | RunErrorEvent
   | TextMessageStartEvent
   | TextMessageContentEvent
   | TextMessageEndEvent

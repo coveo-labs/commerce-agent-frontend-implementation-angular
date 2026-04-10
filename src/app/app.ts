@@ -60,6 +60,10 @@ function restoreConversation(): PersistedConversation | null {
         typeof parsed.threadId === 'string' && parsed.threadId
           ? parsed.threadId
           : crypto.randomUUID(),
+      conversationToken:
+        typeof parsed.conversationToken === 'string' && parsed.conversationToken
+          ? parsed.conversationToken
+          : null,
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],
       surfaces: Array.isArray(parsed.surfaces)
         ? (parsed.surfaces as RenderableCommerceSurface[])

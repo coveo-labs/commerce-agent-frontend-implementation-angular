@@ -25,6 +25,7 @@ export class AgUiClientTransportService {
   streamTurn(input: StreamTurnInput): Observable<AgUiEvent> {
     const agent = new HttpAgent({
       url: demoAgentConfig.liveEndpoint,
+      headers: demoAgentConfig.liveHeaders,
     });
 
     const events = agent.run({
