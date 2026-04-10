@@ -160,6 +160,8 @@ export class AgentDemoService {
       !(await sink.emit({
         type: 'RUN_STARTED',
         threadId: context.input.threadId,
+        conversationSessionId: context.input.conversationSessionId ?? context.input.threadId,
+        conversationToken: context.input.conversationToken,
         runId: context.runId,
       }))
     ) {
@@ -370,6 +372,8 @@ export class AgentDemoService {
     return sink.emit({
       type: 'RUN_FINISHED',
       threadId: context.input.threadId,
+      conversationSessionId: context.input.conversationSessionId ?? context.input.threadId,
+      conversationToken: context.input.conversationToken,
       runId: context.runId,
     });
   }
@@ -428,6 +432,7 @@ export class AgentDemoService {
     const response = await fetch(demoAgentConfig.liveEndpoint, {
       method: 'POST',
       headers: {
+        ...demoAgentConfig.liveHeaders,
         'Content-Type': 'application/json',
       },
       signal,
@@ -442,20 +447,22 @@ export class AgentDemoService {
   }
 
   private buildLiveRequestBody(input: StreamTurnInput): Record<string, unknown> {
+    const defaults = demoAgentConfig.liveRequestDefaults;
+
     return {
-      threadId: input.threadId,
-      runId: crypto.randomUUID(),
-      state: {},
-      tools: [],
-      context: [],
-      forwardedProps: {},
-      messages: [
-        {
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: input.prompt,
+      trackingId: defaults.trackingId,
+      language: defaults.language,
+      country: defaults.country,
+      currency: defaults.currency,
+      clientId: defaults.clientId,
+      message: input.prompt,
+      conversationSessionId: input.conversationSessionId ?? input.threadId,
+      ...(input.conversationToken ? { conversationToken: input.conversationToken } : {}),
+      context: {
+        view: {
+          url: this.resolveViewUrl(),
         },
-      ],
+      },
     };
   }
 
@@ -556,6 +563,37 @@ export class AgentDemoService {
     }
 
     const payload = parsed as Record<string, unknown>;
+    const conversationSessionId = this.optionalString(payload['conversationSessionId']);
+    const conversationToken = this.optionalString(payload['conversationToken']);
+
+    switch (rawEvent.event) {
+      case 'turn_started':
+        return {
+          type: 'RUN_STARTED',
+          threadId: conversationSessionId,
+          runId: this.optionalString(payload['runId']),
+          conversationSessionId,
+          conversationToken,
+        };
+      case 'turn_complete':
+        return {
+          type: 'RUN_FINISHED',
+          threadId: conversationSessionId,
+          runId: this.optionalString(payload['runId']),
+          conversationSessionId,
+          conversationToken,
+        };
+      case 'error':
+        return {
+          type: 'RUN_ERROR',
+          message: this.optionalString(payload['error']) ?? 'The agent request failed.',
+          conversationSessionId,
+          conversationToken,
+        };
+      default:
+        break;
+    }
+
     const event = this.unwrapPayload(payload, rawEvent.event);
 
     if (!event || typeof event['type'] !== 'string') {
@@ -586,6 +624,18 @@ export class AgentDemoService {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  private resolveViewUrl(): string {
+    if (typeof window === 'undefined') {
+      return 'http://localhost:4200/';
+    }
+
+    return window.location.href;
+  }
+
+  private optionalString(value: unknown): string | undefined {
+    return typeof value === 'string' && value ? value : undefined;
   }
 }
 

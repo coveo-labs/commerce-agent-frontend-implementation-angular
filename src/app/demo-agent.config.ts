@@ -6,7 +6,17 @@ export type DemoLiveTransport = 'custom-fetch' | 'ag-ui-client';
 
 export const demoAgentConfig = {
   mode: 'mock' as DemoAgentMode,
-  liveTransport: 'ag-ui-client' as DemoLiveTransport,
+  liveTransport: 'custom-fetch' as DemoLiveTransport,
   liveEndpoint:
-    'https://freedomfurnitureproduction1s4nmz28u.org.coveo.com/rest/organizations/freedomfurnitureproduction1s4nmz28u/commerce/unstable/agentic/converse'
+    'https://platformdev.cloud.coveo.com/rest/organizations/commerceplaygrounducp0r4a2/commerce/unstable/agentic/converse',
+  liveHeaders: {
+    Authorization: 'Bearer your-token-here',
+  },
+  liveRequestDefaults: {
+    trackingId: 'freedom',
+    language: 'en',
+    country: 'US',
+    currency: 'USD',
+    clientId: 'client-id',
+  },
 };

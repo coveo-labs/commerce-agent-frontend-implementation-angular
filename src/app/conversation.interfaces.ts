@@ -15,6 +15,7 @@ export type ToolActivity = {
 export type PersistedConversation = {
   agentMode: DemoAgentMode;
   threadId: string;
+  conversationToken: string | null;
   messages: ChatMessage[];
   surfaces: RenderableCommerceSurface[];
   latestSnapshot: Record<string, unknown> | null;
