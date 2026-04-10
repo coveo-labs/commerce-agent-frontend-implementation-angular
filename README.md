@@ -113,10 +113,29 @@ For this Angular storefront feature, the practical model is:
 ## What This App Demonstrates
 
 - stable conversation identity with a reusable `threadId`
+- backend conversation continuity with `conversationSessionId` and `conversationToken` on the live `/converse` path
 - streamed transcript assembly from AG-UI text lifecycle events
 - structured A2UI rendering separate from assistant prose
 - mock commerce flows for sofas, comparison, and bundle curation
 - separation between transport, A2UI parsing, and presentational components
+
+### Continuing Conversations With `/converse`
+
+The live Commerce `/converse` endpoint uses two continuity fields:
+
+- `conversationSessionId`
+- `conversationToken`
+
+`conversationSessionId` identifies the conversation. `conversationToken` is an opaque backend-issued token that must be sent back when the user continues that same conversation.
+
+In practice, that means:
+
+1. Start or continue a turn with a `conversationSessionId`.
+2. Read the latest `conversationToken` from the SSE bookend events such as `turn_started`, `turn_complete`, or `error`.
+3. Persist that token with the rest of the conversation state.
+4. Send that same token back on the next request when reusing the same `conversationSessionId`.
+
+Why this matters: the backend uses the token to validate and continue the same conversation safely. Reusing `conversationSessionId` without the latest `conversationToken` can fail the request or break conversation continuity.
 
 ## Supported A2UI Components
 
@@ -236,6 +255,7 @@ It is responsible for:
 - persisted conversation state in `localStorage`
 - hydrating the facade from `localStorage` on startup
 - persisting the facade snapshot back to `localStorage`
+- restoring the persisted `conversationToken` used for live conversation continuation
 - composing the conversation page sections
 
 Modify this file when changing top-level page composition or persistence wiring.
@@ -288,6 +308,7 @@ It is responsible for:
 - draft, transcript, status, and runtime mode state
 - submit flow orchestration
 - consuming normalized AG-UI events
+- persisting the latest `conversationToken` for continued live conversations
 - tracking tool-call and reasoning progress state
 - applying A2UI activity snapshots into renderable surface state
 - exposing the shell view model and persistence snapshot
@@ -304,6 +325,8 @@ It is responsible for:
 - choosing between mock and live mode from the caller-provided mode
 - producing the local mock Observable event stream
 - supporting the fallback custom `fetch` + SSE live path
+- sending the Commerce `/converse` request body shape expected by CAPI
+- capturing `conversationSessionId` and `conversationToken` from SSE bookend events
 - normalizing raw SSE payloads into the app’s AG-UI event model
 
 Modify this file when changing transport selection, request payload shape, or fallback live transport behavior.
@@ -416,6 +439,10 @@ They are visual references, not strict implementation requirements. The Angular 
 
 This repo includes `@ag-ui/client` as an optional live transport alongside the hand-rolled `fetch` + SSE path.
 
+That option is useful when the backend exposes a direct AG-UI-compatible request and response contract.
+
+For the Commerce `/converse` endpoint specifically, the custom `fetch` + SSE path is the safer default because the stream includes CAPI bookend events that carry `conversationSessionId` and `conversationToken`. The frontend needs those values to continue the same conversation on the next user turn.
+
 That live path:
 
 1. Use `HttpAgent` from `@ag-ui/client` in an Angular service.
@@ -470,6 +497,47 @@ These are enough to exercise the primary storefront rendering patterns without t
 When the Freedom commerce conversation endpoint becomes available, the storefront should send live requests to:
 
 `https://freedomfurnitureproduction1s4nmz28u.org.coveo.com/rest/organizations/freedomfurnitureproduction1s4nmz28u/commerce/unstable/agentic/converse`
+
+Example request body shape:
+
+```json
+{
+  "trackingId": "freedom",
+  "language": "en",
+  "country": "US",
+  "currency": "USD",
+  "clientId": "localhost-4200",
+  "message": "show me sofas",
+  "conversationSessionId": "dd395744-d595-48fa-b5a0-d4b4e5c5e1f3",
+  "context": {
+    "view": {
+      "url": "http://localhost:4200/"
+    }
+  }
+}
+```
+
+On follow-up turns, the storefront should also send the latest `conversationToken` returned by the backend SSE bookend events:
+
+```json
+{
+  "trackingId": "freedom",
+  "language": "en",
+  "country": "US",
+  "currency": "USD",
+  "clientId": "localhost-4200",
+  "message": "show me sofas",
+  "conversationSessionId": "dd395744-d595-48fa-b5a0-d4b4e5c5e1f3",
+  "conversationToken": "<latest-token-from-the-previous-turn>",
+  "context": {
+    "view": {
+      "url": "http://localhost:4200/"
+    }
+  }
+}
+```
+
+That token is required to continue the same conversation. The frontend should treat it as opaque, persist the latest value, and echo it back whenever it reuses the same `conversationSessionId`.
 
 Until then:
 
