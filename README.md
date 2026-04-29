@@ -496,8 +496,9 @@ These are enough to exercise the primary storefront rendering patterns without t
 
 When the Freedom commerce conversation endpoint becomes available, the storefront should send live requests to:
 
-`https://freedomfurnitureproduction1s4nmz28u.org.coveo.com/rest/organizations/freedomfurnitureproduction1s4nmz28u/commerce/unstable/agentic/converse`
+`https://platform-au.cloud.coveo.com/rest/organizations/freedomfurnitureproduction1s4nmz28u/commerce/unstable/agentic/converse` alongside authentication token as usual requests.
 
+The will open an SSE stream.
 Example request body shape:
 
 ```json
@@ -508,7 +509,6 @@ Example request body shape:
   "currency": "USD",
   "clientId": "localhost-4200",
   "message": "show me sofas",
-  "conversationSessionId": "dd395744-d595-48fa-b5a0-d4b4e5c5e1f3",
   "context": {
     "view": {
       "url": "http://localhost:4200/"
@@ -517,7 +517,7 @@ Example request body shape:
 }
 ```
 
-On follow-up turns, the storefront should also send the latest `conversationToken` returned by the backend SSE bookend events:
+On follow-up turns, the storefront should still target the same endpoint and additionally send the latest `conversationSessionId` and `conversationToken` returned by the backend SSE bookend events:
 
 ```json
 {
@@ -527,7 +527,7 @@ On follow-up turns, the storefront should also send the latest `conversationToke
   "currency": "USD",
   "clientId": "localhost-4200",
   "message": "show me sofas",
-  "conversationSessionId": "dd395744-d595-48fa-b5a0-d4b4e5c5e1f3",
+  "conversationSessionId": "<token-received-with-first-response>",
   "conversationToken": "<latest-token-from-the-previous-turn>",
   "context": {
     "view": {
@@ -537,7 +537,7 @@ On follow-up turns, the storefront should also send the latest `conversationToke
 }
 ```
 
-That token is required to continue the same conversation. The frontend should treat it as opaque, persist the latest value, and echo it back whenever it reuses the same `conversationSessionId`.
+Those tokens are required to continue the same conversation. The frontend should treat them as opaque, persist the latest value.
 
 Until then:
 
