@@ -2,3 +2,4 @@
 /dist
 /.angular/cache
 .DS_Store
+/.claude

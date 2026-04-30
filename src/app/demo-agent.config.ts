@@ -13,10 +13,10 @@ export const demoAgentConfig = {
     Authorization: 'Bearer your-token-here',
   },
   liveRequestDefaults: {
-    trackingId: 'freedom',
+    trackingId: 'freedom_au',
     language: 'en',
-    country: 'US',
-    currency: 'USD',
-    clientId: 'client-id',
+    country: 'AU',
+    currency: 'AUD',
+    clientId: '',
   },
 };

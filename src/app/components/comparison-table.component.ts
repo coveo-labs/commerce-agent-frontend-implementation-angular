@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { formatAudPrice } from '../formatting';
 import { ComparisonTableSurface } from '../models';
 
@@ -14,41 +14,37 @@ import { ComparisonTableSurface } from '../models';
       @if (surface().isLoading) {
         <div class="loading-table"></div>
       } @else {
-        <div class="product-strip">
+        <div class="comparison-grid" [style.grid-template-columns]="gridColumns()">
+          <div class="comparison-cell comparison-corner"></div>
           @for (product of surface().products; track product.ec_product_id) {
-            <article class="product-pill">
-              <span>{{ product.ec_brand }}</span>
-              <strong>{{ product.ec_name }}</strong>
-            </article>
-          }
-        </div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                @for (attribute of surface().attributes; track attribute) {
-                  <th>{{ formatLabel(attribute) }}</th>
-                }
-                <th>Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (product of surface().products; track product.ec_product_id) {
-                <tr>
-                  <td>
-                    <strong>{{ product.ec_name }}</strong>
-                    <span>{{ product.ec_brand }}</span>
-                  </td>
-                  @for (attribute of surface().attributes; track attribute) {
-                    <td>{{ product[attribute] || '—' }}</td>
-                  }
-                  <td>{{ formatPrice(product.ec_promo_price ?? product.ec_price) }}</td>
-                </tr>
+            <div class="comparison-cell comparison-head">
+              @if (product.ec_image) {
+                <img
+                  class="comparison-image"
+                  [src]="product.ec_image"
+                  [alt]="product.ec_name"
+                  loading="lazy"
+                  decoding="async"
+                />
               }
-            </tbody>
-          </table>
+              <span class="comparison-brand">{{ product.ec_brand }}</span>
+              <strong>{{ product.ec_name }}</strong>
+            </div>
+          }
+
+          @for (attribute of surface().attributes; track attribute) {
+            <div class="comparison-cell comparison-label">{{ formatLabel(attribute) }}</div>
+            @for (product of surface().products; track product.ec_product_id) {
+              <div class="comparison-cell">{{ product[attribute] || '—' }}</div>
+            }
+          }
+
+          <div class="comparison-cell comparison-label">Price</div>
+          @for (product of surface().products; track product.ec_product_id) {
+            <div class="comparison-cell comparison-price">
+              {{ formatPrice(product.ec_promo_price ?? product.ec_price) }}
+            </div>
+          }
         </div>
       }
     </section>
@@ -71,52 +67,75 @@ import { ComparisonTableSurface } from '../models';
         margin: 0;
       }
 
-      .table-wrap {
-        overflow-x: auto;
-        margin-top: 14px;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 560px;
-      }
-
-      th,
-      td {
-        padding: 12px 10px;
-        border-bottom: 1px solid rgba(17, 35, 31, 0.12);
-        text-align: left;
-        vertical-align: top;
-      }
-
-      td span {
-        display: block;
-        margin-top: 4px;
-        color: #516661;
-        font-size: 0.92rem;
-      }
-
-      .product-strip {
+      .comparison-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 10px;
-      }
-
-      .product-pill {
-        padding: 12px 14px;
+        gap: 0;
+        border: 1px solid rgba(17, 35, 31, 0.1);
         border-radius: 18px;
-        background: rgba(246, 242, 232, 0.92);
-        border: 1px solid rgba(17, 35, 31, 0.08);
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.6);
       }
 
-      .product-pill span {
-        display: block;
-        margin-bottom: 6px;
+      .comparison-cell {
+        padding: 12px 14px;
+        border-right: 1px solid rgba(17, 35, 31, 0.08);
+        border-bottom: 1px solid rgba(17, 35, 31, 0.08);
+        line-height: 1.45;
+        font-size: 0.94rem;
+      }
+
+      .comparison-cell:last-child {
+        border-right: none;
+      }
+
+      .comparison-head {
+        padding: 14px;
+        background: rgba(246, 242, 232, 0.85);
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .comparison-image {
+        width: 100%;
+        max-width: 180px;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        border-radius: 14px;
+        margin-bottom: 8px;
+        background: rgba(232, 222, 209, 0.4);
+      }
+
+      .comparison-brand {
+        font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        font-size: 0.7rem;
         color: #516661;
+      }
+
+      .comparison-head strong {
+        font-size: 1rem;
+        line-height: 1.3;
+      }
+
+      .comparison-corner {
+        background: rgba(246, 242, 232, 0.85);
+      }
+
+      .comparison-label {
+        background: rgba(246, 242, 232, 0.55);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #516661;
+        font-weight: 600;
+      }
+
+      .comparison-price {
+        font-weight: 600;
+        color: #204f46;
       }
 
       .loading-table {
@@ -142,6 +161,10 @@ import { ComparisonTableSurface } from '../models';
 })
 export class ComparisonTableComponent {
   readonly surface = input.required<ComparisonTableSurface>();
+
+  protected readonly gridColumns = computed(
+    () => `minmax(120px, auto) repeat(${this.surface().products.length}, minmax(0, 1fr))`,
+  );
 
   protected formatLabel(value: string): string {
     return value.replace(/_/g, ' ');

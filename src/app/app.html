@@ -11,6 +11,10 @@
     (agentModeChange)="facade.toggleAgentMode($event)"
   />
 
+  @if (vm.agentMode === 'live') {
+    <app-auth-token-input />
+  }
+
   <section class="workspace">
     <article class="panel transcript-panel">
       <app-transcript-panel
@@ -18,6 +22,7 @@
         [reasoningText]="vm.reasoningText"
         [toolActivity]="vm.toolActivity"
         [surfaces]="vm.surfaces"
+        [completedTurns]="vm.completedTurns"
         (resetConversation)="facade.resetConversation()"
         (quickAction)="facade.useQuickAction($event)"
       />

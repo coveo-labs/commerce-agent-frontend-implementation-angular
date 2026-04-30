@@ -1,10 +1,11 @@
 // Alternative live transport based on the official AG-UI client SDK.
 // This service keeps the SDK's subscribe-based stream as an RxJS Observable.
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { BaseEvent, HttpAgent } from '@ag-ui/client';
 import { Observable } from 'rxjs';
 import { AgUiEvent, StreamTurnInput } from '../models';
 import { demoAgentConfig } from '../demo-agent.config';
+import { AuthTokenStore } from './auth-token-store.service';
 
 type EventStreamSubscription = {
   unsubscribe(): void;
@@ -22,10 +23,17 @@ type EventStream = {
 
 @Injectable({ providedIn: 'root' })
 export class AgUiClientTransportService {
+  private readonly authTokenStore = inject(AuthTokenStore);
+
   streamTurn(input: StreamTurnInput): Observable<AgUiEvent> {
+    const userAuth = this.authTokenStore.authorizationHeader();
+    const endpoint = this.authTokenStore.resolveEndpoint(demoAgentConfig.liveEndpoint);
     const agent = new HttpAgent({
-      url: demoAgentConfig.liveEndpoint,
-      headers: demoAgentConfig.liveHeaders,
+      url: endpoint,
+      headers: {
+        ...demoAgentConfig.liveHeaders,
+        ...(userAuth ? { Authorization: userAuth } : {}),
+      },
     });
 
     const events = agent.run({

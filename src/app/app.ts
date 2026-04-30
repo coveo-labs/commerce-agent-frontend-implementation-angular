@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { AuthTokenInputComponent } from './components/auth-token-input.component';
 import { ConversationHeaderComponent } from './components/conversation-header.component';
 import {
   PersistedConversation,
@@ -14,6 +15,7 @@ const STORAGE_KEY = 'freedom-guide-conversation';
 @Component({
   selector: 'app-root',
   imports: [
+    AuthTokenInputComponent,
     ConversationHeaderComponent,
     TranscriptPanelComponent,
     PromptComposerComponent,
@@ -74,6 +76,7 @@ function restoreConversation(): PersistedConversation | null {
           : null,
       reasoningText: typeof parsed.reasoningText === 'string' ? parsed.reasoningText : '',
       toolActivity: normalizeToolActivity(parsed.toolActivity),
+      completedTurns: Array.isArray(parsed.completedTurns) ? parsed.completedTurns : [],
     };
   } catch {
     return null;

@@ -12,6 +12,15 @@ export type ToolActivity = {
   resultPreview: string;
 };
 
+export type ConversationTurn = {
+  id: string;
+  userText: string;
+  assistantText: string;
+  surfaces: RenderableCommerceSurface[];
+  reasoningText: string;
+  toolActivity: ToolActivity[];
+};
+
 export type PersistedConversation = {
   agentMode: DemoAgentMode;
   threadId: string;
@@ -21,6 +30,7 @@ export type PersistedConversation = {
   latestSnapshot: Record<string, unknown> | null;
   reasoningText: string;
   toolActivity: ToolActivity[];
+  completedTurns: ConversationTurn[];
 };
 
 export type ConversationViewModel = {
@@ -36,4 +46,5 @@ export type ConversationViewModel = {
   toolActivity: ToolActivity[];
   surfaces: RenderableCommerceSurface[];
   latestSnapshot: Record<string, unknown> | null;
+  completedTurns: ConversationTurn[];
 };

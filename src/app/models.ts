@@ -301,6 +301,7 @@ export type CommerceSurfaceComponentType =
   | 'ComparisonSummary'
   | 'BundleDisplay'
   | 'NextActionsBar'
+  | 'ProductResearchCard'
   | 'ProductCard';
 
 export type ProductCarouselSurface = {
@@ -354,9 +355,19 @@ export type NextActionsBarSurface = {
   isLoading: boolean;
 };
 
+export type ProductResearchCardSurface = {
+  surfaceId: string;
+  componentType: 'ProductResearchCard';
+  summary: string;
+  bullets: string[];
+  product: ProductRecord | null;
+  isLoading: boolean;
+};
+
 export type RenderableCommerceSurface =
   | ProductCarouselSurface
   | ComparisonTableSurface
   | ComparisonSummarySurface
   | BundleDisplaySurface
-  | NextActionsBarSurface;
+  | NextActionsBarSurface
+  | ProductResearchCardSurface;
