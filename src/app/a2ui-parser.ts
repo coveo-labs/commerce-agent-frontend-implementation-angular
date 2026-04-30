@@ -22,6 +22,8 @@ type SurfaceDraft = {
   heading?: string;
   text?: string;
   title?: string;
+  summary?: string;
+  bullets?: string[];
   attributes?: string[];
   bundles?: BundleDisplayTier[];
   products: ProductRecord[];
@@ -77,6 +79,7 @@ function toProductRecord(item: ValueMapItem): ProductRecord | null {
   }
 
   return {
+    ...record,
     ec_product_id: productId,
     ec_name: productName,
     ec_brand: String(record['ec_brand'] ?? ''),
@@ -210,6 +213,16 @@ function draftToSurface(
         actions: draft.actions,
         isLoading: draft.isLoading
       };
+    case 'ProductResearchCard':
+      return {
+        surfaceId: draft.surfaceId,
+        componentType: 'ProductResearchCard',
+        summary: draft.summary ?? '',
+        bullets: draft.bullets ?? [],
+        product:
+          (productsBySurface[draft.surfaceId] ?? draft.products)[0] ?? null,
+        isLoading: draft.isLoading
+      };
     default:
       return null;
   }
@@ -246,6 +259,11 @@ function collectDrafts(
       draft.isLoading = existing.isLoading;
     } else if (existing.componentType === 'NextActionsBar') {
       draft.actions = [...existing.actions];
+      draft.isLoading = existing.isLoading;
+    } else if (existing.componentType === 'ProductResearchCard') {
+      draft.summary = existing.summary;
+      draft.bullets = [...existing.bullets];
+      draft.products = existing.product ? [existing.product] : [];
       draft.isLoading = existing.isLoading;
     }
   }
@@ -290,6 +308,14 @@ function collectDrafts(
             : nextDraft.bundles;
           nextDraft.isLoading = payload?.['isLoading'] === true;
         } else if (type === 'NextActionsBar') {
+          nextDraft.isLoading = payload?.['isLoading'] === true;
+        } else if (type === 'ProductResearchCard') {
+          nextDraft.summary = readLiteralOrPath(payload?.['summary']);
+          nextDraft.bullets = Array.isArray(payload?.['bullets'])
+            ? (payload['bullets'] as unknown[])
+                .map((b) => readLiteralOrPath(b))
+                .filter((b): b is string => typeof b === 'string' && b.length > 0)
+            : [];
           nextDraft.isLoading = payload?.['isLoading'] === true;
         }
       }
@@ -351,7 +377,19 @@ export function createEmptySurfaceState(): SurfaceState {
 }
 
 export function getRenderableSurfaces(state: SurfaceState): RenderableCommerceSurface[] {
-  return Object.values(state.surfacesById).sort(
-    (left, right) => state.orderById[left.surfaceId] - state.orderById[right.surfaceId]
+  const all = Object.values(state.surfacesById);
+  const realComponentTypes = new Set(
+    all
+      .filter((surface) => !surface.surfaceId.startsWith('skeleton-'))
+      .map((surface) => surface.componentType),
   );
+  return all
+    .filter(
+      (surface) =>
+        !surface.surfaceId.startsWith('skeleton-') ||
+        !realComponentTypes.has(surface.componentType),
+    )
+    .sort(
+      (left, right) => state.orderById[left.surfaceId] - state.orderById[right.surfaceId],
+    );
 }

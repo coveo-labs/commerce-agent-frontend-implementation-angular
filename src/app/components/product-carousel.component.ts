@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  input,
+  viewChild,
+} from '@angular/core';
 import { formatAudPrice } from '../formatting';
 import { ProductCarouselSurface } from '../models';
 
@@ -7,8 +14,27 @@ import { ProductCarouselSurface } from '../models';
   template: `
     <section class="surface">
       <header class="surface-header">
-        <p class="surface-kicker">Product Carousel</p>
-        <h3>{{ surface().heading }}</h3>
+        <div>
+          <p class="surface-kicker">Product Carousel</p>
+          <h3>{{ surface().heading }}</h3>
+        </div>
+        @if (!surface().isLoading && surface().products.length > 0) {
+          <div class="carousel-controls">
+            <span class="carousel-count">{{ surface().products.length }} results</span>
+            <button
+              type="button"
+              class="carousel-arrow"
+              aria-label="Scroll previous"
+              (click)="scrollBy(-1)"
+            >‹</button>
+            <button
+              type="button"
+              class="carousel-arrow"
+              aria-label="Scroll next"
+              (click)="scrollBy(1)"
+            >›</button>
+          </div>
+        }
       </header>
 
       @if (surface().isLoading) {
@@ -18,24 +44,30 @@ import { ProductCarouselSurface } from '../models';
           }
         </div>
       } @else {
-        <div class="grid">
+        <div
+          class="grid"
+          #grid
+          [style.grid-template-rows]="rowsTemplate()"
+        >
           @for (item of surface().products; track item.ec_product_id) {
             <article class="card">
-              <div
-                class="swatch"
-                [style.background]="item.accent || 'linear-gradient(135deg, #e7d8c8, #c6a889)'"
-              ></div>
+              @if (item.ec_image) {
+                <img
+                  class="product-image"
+                  [src]="item.ec_image"
+                  [alt]="item.ec_name"
+                  loading="lazy"
+                  decoding="async"
+                  (error)="onImageError($any($event))"
+                />
+              } @else {
+                <div
+                  class="swatch"
+                  [style.background]="item.accent || 'linear-gradient(135deg, #e7d8c8, #c6a889)'"
+                ></div>
+              }
               <p class="brand">{{ item.ec_brand }}</p>
               <h4>{{ item.ec_name }}</h4>
-              <p class="description">{{ item.description || 'Freedom furniture option' }}</p>
-              <div class="meta">
-                @if (item['material']) {
-                  <span>{{ item['material'] }}</span>
-                }
-                @if (item['style']) {
-                  <span>{{ item['style'] }}</span>
-                }
-              </div>
               <div class="footer">
                 <strong>{{ formatPrice(item.ec_promo_price ?? item.ec_price) }}</strong>
                 <span>{{ item.ec_promo_price ? 'Sale price' : 'View details' }}</span>
@@ -49,12 +81,15 @@ import { ProductCarouselSurface } from '../models';
   styles: [
     `
       .surface-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
         margin-bottom: 16px;
       }
 
       .surface-kicker,
-      .brand,
-      .meta {
+      .brand {
         margin: 0 0 6px;
         text-transform: uppercase;
         letter-spacing: 0.1em;
@@ -67,18 +102,95 @@ import { ProductCarouselSurface } from '../models';
         margin: 0;
       }
 
-      .grid,
+      .carousel-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .carousel-count {
+        font-size: 0.78rem;
+        color: #516661;
+        margin-right: 4px;
+      }
+
+      .carousel-arrow {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 1px solid rgba(17, 35, 31, 0.12);
+        background: rgba(255, 255, 255, 0.85);
+        color: #204f46;
+        font-size: 1.4rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 160ms ease, transform 160ms ease;
+      }
+
+      .carousel-arrow:hover {
+        background: rgba(215, 239, 231, 0.9);
+        transform: scale(1.05);
+      }
+
+      .grid {
+        --carousel-gap: 16px;
+        --carousel-columns: 4;
+        --carousel-min-card: 240px;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: max(
+          var(--carousel-min-card),
+          calc(
+            (100% - (var(--carousel-columns) - 1) * var(--carousel-gap)) /
+              var(--carousel-columns)
+          )
+        );
+        gap: var(--carousel-gap);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x proximity;
+        scroll-behavior: smooth;
+        padding-bottom: 4px;
+      }
+
+      .grid::-webkit-scrollbar {
+        height: 6px;
+      }
+
+      .grid::-webkit-scrollbar-thumb {
+        background: rgba(17, 35, 31, 0.18);
+        border-radius: 3px;
+      }
+
       .loading-grid {
         display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
         gap: 14px;
+      }
+
+      .product-image {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        border-radius: 16px;
+        margin-bottom: 12px;
+        background: rgba(232, 222, 209, 0.4);
+      }
+
+      .product-image[data-broken='true'] {
+        display: none;
       }
 
       .card,
       .loading-card {
         border-radius: 22px;
-        padding: 16px;
+        padding: 14px;
         border: 1px solid rgba(17, 35, 31, 0.12);
-        background: rgba(255, 255, 255, 0.8);
+        background: rgba(255, 255, 255, 0.85);
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
       }
 
       .loading-card {
@@ -96,28 +208,18 @@ import { ProductCarouselSurface } from '../models';
         margin-bottom: 12px;
       }
 
-      .description {
-        margin: 12px 0;
-        color: #516661;
-        line-height: 1.5;
-      }
-
-      .meta {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-
       .footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-top: 12px;
+        margin-top: auto;
+        padding-top: 8px;
       }
 
       .footer span {
         color: #204f46;
+        font-size: 0.82rem;
       }
 
       @keyframes shimmer {
@@ -133,10 +235,30 @@ import { ProductCarouselSurface } from '../models';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProductCarouselComponent {
-  protected readonly placeholders = Array.from({ length: 3 });
+  protected readonly placeholders = Array.from({ length: 4 });
   readonly surface = input.required<ProductCarouselSurface>();
+
+  protected readonly rowsTemplate = computed(() =>
+    this.surface().products.length >= 8 ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+  );
+
+  private readonly grid = viewChild<ElementRef<HTMLDivElement>>('grid');
 
   protected formatPrice(value: number): string {
     return formatAudPrice(value);
+  }
+
+  protected onImageError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    img.dataset['broken'] = 'true';
+  }
+
+  protected scrollBy(direction: 1 | -1): void {
+    const el = this.grid()?.nativeElement;
+    if (!el) {
+      return;
+    }
+    const distance = Math.max(el.clientWidth - 80, 240);
+    el.scrollBy({ left: distance * direction, behavior: 'smooth' });
   }
 }

@@ -6,6 +6,7 @@ import {
   getRenderableSurfaces,
 } from '../a2ui-parser';
 import {
+  ConversationTurn,
   ConversationViewModel,
   PersistedConversation,
   SurfaceState,
@@ -30,6 +31,7 @@ export class DemoConversationFacade {
   readonly threadId = signal(this.createId());
   readonly messages = signal<ChatMessage[]>([]);
   readonly surfaceState = signal<SurfaceState>(createEmptySurfaceState());
+  readonly completedTurns = signal<ConversationTurn[]>([]);
 
   readonly surfaces = computed(() => getRenderableSurfaces(this.surfaceState()));
   readonly historyCount = computed(() => this.messages().length);
@@ -49,6 +51,7 @@ export class DemoConversationFacade {
     toolActivity: this.toolActivity(),
     surfaces: this.surfaces(),
     latestSnapshot: this.latestSnapshot(),
+    completedTurns: this.completedTurns(),
   }));
   readonly persistenceSnapshot = computed<PersistedConversation>(() => ({
     agentMode: this.agentMode(),
@@ -59,6 +62,7 @@ export class DemoConversationFacade {
     latestSnapshot: this.latestSnapshot(),
     reasoningText: this.reasoningText(),
     toolActivity: this.toolActivity(),
+    completedTurns: this.completedTurns(),
   }));
 
   hydrate(conversation: PersistedConversation | null): void {
@@ -74,6 +78,7 @@ export class DemoConversationFacade {
     this.latestSnapshot.set(conversation.latestSnapshot);
     this.reasoningText.set(conversation.reasoningText);
     this.toolActivity.set(conversation.toolActivity);
+    this.completedTurns.set(conversation.completedTurns ?? []);
   }
 
   setDraft(value: string): void {
@@ -129,6 +134,7 @@ export class DemoConversationFacade {
     this.latestSnapshot.set(null);
     this.reasoningText.set('');
     this.toolActivity.set([]);
+    this.completedTurns.set([]);
     this.status.set('Ready');
     this.busy.set(false);
   }
@@ -142,14 +148,35 @@ export class DemoConversationFacade {
   }
 
   private startRun(message: string): void {
+    this.snapshotPreviousTurn();
     this.draft.set('');
     this.busy.set(true);
     this.status.set('Starting run');
-    this.appendMessage({ id: this.createId(), role: 'user', text: message });
+    this.messages.set([{ id: this.createId(), role: 'user', text: message }]);
     this.surfaceState.set(createEmptySurfaceState());
     this.latestSnapshot.set(null);
     this.reasoningText.set('');
     this.toolActivity.set([]);
+  }
+
+  private snapshotPreviousTurn(): void {
+    const messages = this.messages();
+    const userMessage = messages.find((m) => m.role === 'user');
+    if (!userMessage) {
+      return;
+    }
+    const assistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
+    this.completedTurns.update((turns) => [
+      ...turns,
+      {
+        id: userMessage.id,
+        userText: userMessage.text,
+        assistantText: assistantMessage?.text ?? '',
+        surfaces: this.surfaces(),
+        reasoningText: this.reasoningText(),
+        toolActivity: this.toolActivity(),
+      },
+    ]);
   }
 
   private handleSubmitError(error: unknown): void {

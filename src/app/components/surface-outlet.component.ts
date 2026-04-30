@@ -13,6 +13,7 @@ import { ComparisonSummaryComponent } from './comparison-summary.component';
 import { ComparisonTableComponent } from './comparison-table.component';
 import { NextActionsBarComponent } from './next-actions-bar.component';
 import { ProductCarouselComponent } from './product-carousel.component';
+import { ProductResearchCardComponent } from './product-research-card.component';
 
 const SURFACE_COMPONENTS: Record<RenderableCommerceSurface['componentType'], Type<unknown>> = {
   ProductCarousel: ProductCarouselComponent,
@@ -20,6 +21,7 @@ const SURFACE_COMPONENTS: Record<RenderableCommerceSurface['componentType'], Typ
   ComparisonSummary: ComparisonSummaryComponent,
   BundleDisplay: BundleDisplayComponent,
   NextActionsBar: NextActionsBarComponent,
+  ProductResearchCard: ProductResearchCardComponent,
 };
 
 @Component({

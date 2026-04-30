@@ -6,6 +6,7 @@ import { demoAgentConfig, DemoAgentMode, DemoLiveTransport } from '../demo-agent
 import { getMockScenario, MockScenario, MockToolCall } from '../mock-catalog';
 import { AgUiEvent, StreamTurnInput } from '../models';
 import { AgUiClientTransportService } from './ag-ui-client-transport.service';
+import { AuthTokenStore } from './auth-token-store.service';
 
 type RawSseEvent = {
   event?: string;
@@ -37,6 +38,7 @@ type MockRunContext = {
 @Injectable({ providedIn: 'root' })
 export class AgentDemoService {
   private readonly agUiClientTransport = inject(AgUiClientTransportService);
+  private readonly authTokenStore = inject(AuthTokenStore);
   private readonly liveTransport: DemoLiveTransport = demoAgentConfig.liveTransport;
 
   getLiveTransport(): DemoLiveTransport {
@@ -429,10 +431,13 @@ export class AgentDemoService {
     input: StreamTurnInput,
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array>> {
-    const response = await fetch(demoAgentConfig.liveEndpoint, {
+    const userAuth = this.authTokenStore.authorizationHeader();
+    const endpoint = this.authTokenStore.resolveEndpoint(demoAgentConfig.liveEndpoint);
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         ...demoAgentConfig.liveHeaders,
+        ...(userAuth ? { Authorization: userAuth } : {}),
         'Content-Type': 'application/json',
       },
       signal,
@@ -447,7 +452,7 @@ export class AgentDemoService {
   }
 
   private buildLiveRequestBody(input: StreamTurnInput): Record<string, unknown> {
-    const defaults = demoAgentConfig.liveRequestDefaults;
+    const defaults = this.authTokenStore.resolveRequestDefaults(demoAgentConfig.liveRequestDefaults);
 
     return {
       trackingId: defaults.trackingId,

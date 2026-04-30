@@ -13,6 +13,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
         [disabled]="busy()"
         placeholder="Show me sofas"
         (input)="draftChange.emit(draftInput.value)"
+        (keydown)="handleKeydown($event)"
       ></textarea>
 
       <div class="composer-actions">
@@ -39,6 +40,17 @@ export class PromptComposerComponent {
       return;
     }
 
+    this.submitPrompt.emit();
+  }
+
+  protected handleKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    if (this.busy() || !this.draft().trim()) {
+      return;
+    }
     this.submitPrompt.emit();
   }
 }
